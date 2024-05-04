@@ -11,7 +11,7 @@
 ; To compile and link the program, use the following commands:
 ; Run under the developer command prompt for Visual Studio 2022 where ml and link are available
 ;
-; ml /coff mywin.asm /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib kernel32.lib comctl32.lib
+; ml /coff mynotepad.asm /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib kernel32.lib comctl32.lib
 ;===============================================================================
 
 .386
