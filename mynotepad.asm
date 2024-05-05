@@ -1,4 +1,4 @@
-; Notepad like application developed in MACRO ASSEMBLY LANGUAGE (MASM) for Windows
+; Notepad like application developed in x86 assembly language (MASM) for Windows
 ;===============================================================================
 ; This program is a simple text editor that allows the user to open, save, and save as text files.
 ; The program uses the Windows API to create a window, menu, edit control, and status bar.
@@ -8,13 +8,13 @@
 ; To compile and run this program, you need the MASM32 SDK installed.
 ; You can download the MASM32 SDK from http://www.masm32.com/download.htm
 ;===============================================================================
-; To compile and link the program, use the following commands:
-; Run under the developer command prompt for Visual Studio 2022 where ml and link are available
+; To compile and link the program, use the masm32 editor qedit or install
+; Visual Sytudio and following commands in the developer command prompt:
 ;
 ; ml /coff mynotepad.asm /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib kernel32.lib comctl32.lib
 ;===============================================================================
 
-.386
+.486
 .model flat, stdcall
 option casemap:none
 
@@ -44,13 +44,49 @@ CloseFile PROTO
 .data
 format db "%d", 0
 ClassName db "MyWindowClass",0
+
 AppName db "Shaun's Notepad",0
-File db "File", 0 ; Menu item for "File" menu
-Open db "Open", 0 ; Menu item for "Open" menu
-Save db "Save", 0 ; Menu item for "Save" menu
-SaveAs db "Save As", 0 ; Menu item for "Save As" menu
-Exit db "Exit", 0 ; Menu item for "Exit" menu
+AboutText db "This is a simple text editor created in x86 assembly language by Shaun Price", 0
+
+; Flags
 fileIsOpen dd 0   ; 0 = No file open, 1 = File open
+
+; Menu items
+File db "&File", 0 ; Menu item for "File" menu
+Open db "&Open", 9, "Ctrl+O", 0 ; Menu item for "Open" menu
+Save db "&Save", 9, "Ctrl+S",0 ; Menu item for "Save" menu
+SaveAs db "Save As", 9, "Ctrl+Shift+S", 0 ; Menu item for "Save As" menu
+Exit db "E&xit", 0 ; Menu item for "Exit" menu
+Font db "Font", 0 ; Menu item for "Font" menu
+Edit db "&Edit", 0 ; Menu item for "Edit" menu
+Help db "&Help", 0 ; Menu item for "Help" menu
+About db "About", 9, "F1", 0 ; Menu item for "About" menu
+
+; IDs for the menu items
+IDM_FILE equ 1000
+IDM_OPEN equ 1010
+IDM_SAVE equ 1030
+IDM_SAVEAS equ 1031
+IDM_EXIT equ 1090
+IDM_EDIT equ 2000
+IDM_FONT equ 2010
+IDM_HELP equ 9000
+IDM_ABOUT equ 9010
+
+
+; ID for the accelerator table
+IDA_OPEN equ 101
+IDA_SAVE equ 102
+IDA_SAVEAS equ 103
+IDA_EXIT equ 104
+IDA_ABOUT equ 105
+
+; Define ACCEL structures
+accelTable      ACCEL   <FVIRTKEY + FCONTROL, 'O', IDA_OPEN>, \
+                        <FVIRTKEY + FCONTROL, 'S', IDA_SAVE>, \
+                        <FVIRTKEY + FCONTROL + FSHIFT, 'S', IDA_SAVEAS>, \
+                        <FVIRTKEY + FCONTROL, 'X', IDA_EXIT>, \
+                        <FVIRTKEY, VK_F1, IDA_ABOUT>
 
 OpenFileNameTitle db "Open Text File", 0
 FilterString db "Text files (*.txt)",0, "*.txt",0, "All files",0, "*.*",0, 0
@@ -74,23 +110,36 @@ szErrorCaptionNoText db "No text to save", 0
 
 ; Variables
 .data?
+
+; Window variables
 hInstance HINSTANCE ?
 m_hWnd HWND ?
 hMenu HMENU ?
 hEdit HWND ?
+hAccelTable HANDLE ?
 
+; Menu handles
 hFileMenu HMENU ?
 hOpenMenu HMENU ?
 hSaveMenu HMENU ?
 hSaveAsMenu HMENU ?
 hExitMenu HMENU ?
+
+hEditMenu HMENU ?
+hFontMenu HMENU ?
+
+hHelpMenu HMENU ?
+hAboutMenu HMENU ?
+
+; Status bar handle
 hStatusBar HWND ?
 
-hFont HANDLE ?
-msg MSG <>
-m_uMsg dd ?
-wc WNDCLASSEX <>
+hFont HANDLE ?      ; Handle to the font
+msg MSG <>          ; Message structure
+m_uMsg dd ?         ; Message ID
+wc WNDCLASSEX <>    ; Window class structure
 
+; File handling variables
 ofn OPENFILENAME <>
 szFileName db MAX_PATH dup(?)
 szFileTitle db MAX_PATH dup(?)
@@ -105,6 +154,7 @@ bytesRead DWORD ?
 dwWritten DWORD ?
 
 .code
+; Entry point
 start:
     ; Initialize the variables
     mov fileIsOpen, 0
@@ -167,29 +217,59 @@ start:
     invoke CreateMenu
     mov hMenu, eax
 
+    ; File menu
     invoke CreatePopupMenu
     mov hFileMenu, eax
 
+    ; Open menu
     invoke CreatePopupMenu
     mov hOpenMenu, eax
 
+    ; Save menu
     invoke CreatePopupMenu
     mov hSaveMenu, eax
 
+    ; Save As menu
     invoke CreatePopupMenu
     mov hSaveAsMenu, eax
 
+    ; Exit menu
     invoke CreatePopupMenu
     mov hExitMenu, eax
 
-    invoke AppendMenu, hFileMenu, MF_STRING, 1010, addr Open
+    ; Edit menu
+    invoke CreatePopupMenu
+    mov hEditMenu, eax
+
+    ; Font menu
+    invoke CreatePopupMenu
+    mov hFontMenu, eax
+
+    ; Help menu
+    invoke CreatePopupMenu
+    mov hHelpMenu, eax
+
+    ; About menu
+    invoke CreatePopupMenu
+    mov hAboutMenu, eax
+
+    ; Add menu items to the menus
+    invoke AppendMenu, hFileMenu, MF_STRING, IDM_OPEN, addr Open
     invoke AppendMenu, hFileMenu, MF_SEPARATOR, 0, NULL
-    invoke AppendMenu, hFileMenu, MF_STRING, 1030, addr Save
-    invoke AppendMenu, hFileMenu, MF_STRING, 1031, addr SaveAs
+    invoke AppendMenu, hFileMenu, MF_STRING, IDM_SAVE, addr Save
+    invoke AppendMenu, hFileMenu, MF_STRING, IDM_SAVEAS, addr SaveAs
     invoke AppendMenu, hFileMenu, MF_SEPARATOR, 0, NULL
-    invoke AppendMenu, hFileMenu, MF_STRING, 1001, addr Exit
+    invoke AppendMenu, hFileMenu, MF_STRING, IDM_EXIT, addr Exit
     invoke AppendMenu, hMenu, MF_POPUP, hFileMenu, addr File
 
+    invoke AppendMenu, hEditMenu, MF_STRING, IDM_FONT, addr Font
+    invoke AppendMenu, hMenu, MF_POPUP, hEditMenu, addr Edit
+    
+    ; Add the Help menu to the right
+    invoke AppendMenu, hHelpMenu, MF_STRING, IDM_ABOUT, addr About
+    invoke AppendMenu, hMenu, MF_POPUP, hHelpMenu, addr Help
+
+    ; Set the menu for the window
     invoke RegisterClassEx, ADDR wc
     invoke CreateWindowEx, 0, ADDR ClassName, ADDR AppName, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 400, 300, NULL, hMenu, hInstance, NULL
     mov m_hWnd, eax
@@ -197,10 +277,17 @@ start:
     invoke ShowWindow, m_hWnd, SW_SHOWNORMAL
     invoke UpdateWindow, m_hWnd
 
+    ; Create the accelerator table
+    invoke CreateAcceleratorTable, ADDR accelTable, 5
+    mov hAccelTable, eax
+
     ; Message loop
     .WHILE TRUE
         invoke GetMessage, ADDR msg, NULL, 0, 0 ; Get the next message
         .BREAK .IF !eax                         ; Exit if WM_QUIT received
+        ; Use TranslateAccelerator to handle accelerator keys
+        invoke TranslateAccelerator, m_hWnd, hAccelTable, ADDR msg
+        .CONTINUE .IF eax  ; If non-zero, the message was handled
         invoke TranslateMessage, ADDR msg       ; Translate the message
         invoke DispatchMessage, ADDR msg        ; Dispatch the message
     .ENDW
@@ -225,6 +312,19 @@ UpdateMenuItems PROC hWnd:HWND
     .ENDIF
     ret
 UpdateMenuItems ENDP
+
+; Display Last Error Message
+DisplayError PROC hWnd:HWND, dwError:DWORD, szCaption:LPSTR
+    LOCAL msgBuffer[256]:BYTE
+
+    ; Format the error message
+    invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, dwError, 0, ADDR msgBuffer, SIZEOF msgBuffer, NULL
+                
+    ; Display the error message
+    invoke MessageBox, hWnd, ADDR msgBuffer, ADDR szCaption, MB_ICONERROR
+
+    ret
+DisplayError ENDP
 
 ; Open a file
 DoOpenFile PROC hWnd:HWND
@@ -273,16 +373,9 @@ DoOpenFile PROC hWnd:HWND
                     invoke ReadFile, hFile, lpFileBase, fileSize, ADDR bytesRead, NULL
 
                     .IF eax == 0
-                        ; Handle the error
-
-                        ; Get the error code
-                        invoke GetLastError
-
-                        ; Format the error message
-                        invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-                        
                         ; Display the error message
-                        invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoRead, MB_ICONERROR
+                        invoke GetLastError
+                        invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoRead
                         
                         ; Free the buffer
                         invoke GlobalFree, lpFileBase
@@ -294,30 +387,16 @@ DoOpenFile PROC hWnd:HWND
                         invoke GlobalFree, lpFileBase
                     .ENDIF
                 .ELSE
-                    ; Handle the error
-
-                    ; Get the error code
-                    invoke GetLastError
-
-                    ; Format the error message
-                    invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-                    
                     ; Display the error message
-                    invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoOpen, MB_ICONERROR
+                    invoke GetLastError
+                    invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoOpen
 
                     ret
                 .ENDIF
             .ELSE
-                ; Handle the error
-
-                ; Get the error code
-                invoke GetLastError
-
-                ; Format the error message
-                invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-                
                 ; Display the error message
-                invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoOpen, MB_ICONERROR
+                invoke GetLastError
+                invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoOpen
 
                 ret
             .ENDIF
@@ -372,14 +451,9 @@ DoSaveFile PROC hWnd:HWND, bSaveAs:BOOL
                 ; Set the file handle to NULL
                 mov hFile, NULL
 
-                ; Get the error code
-                invoke GetLastError
-
-                ; Format the error message
-                invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-                
                 ; Display the error message
-                invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoOpen, MB_ICONERROR
+                invoke GetLastError
+                invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoOpen
 
                 ; Clear the file name
                 mov szFileName, 0
@@ -413,16 +487,9 @@ DoSaveFile PROC hWnd:HWND, bSaveAs:BOOL
 
         ; Check if the memory was allocated.
     .IF lpFileBase == NULL
-        ; Handle the error
-
-        ; Get the error code
-        invoke GetLastError
-        
-        ; Format the error message
-        invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-        
         ; Display the error message
-        invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoMemory, MB_ICONERROR
+        invoke GetLastError
+        invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoMemory
 
         ret
     .ENDIF
@@ -432,16 +499,9 @@ DoSaveFile PROC hWnd:HWND, bSaveAs:BOOL
 
     ; Check if the text was retrieved.
     .IF eax == 0
-        ; Handle the error
-
-        ; Get the error code
-        invoke GetLastError
-
-        ; Format the error message
-        invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-
         ; Display the error message
-        invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoText, MB_ICONERROR
+        invoke GetLastError
+        invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoText
 
         ; Free the allocated memory.
         invoke GlobalFree, lpFileBase
@@ -462,16 +522,9 @@ DoSaveFile PROC hWnd:HWND, bSaveAs:BOOL
 
         ; Check if the text was written.
         .IF eax == 0 || ebx != fileSize
-            ; Handle the error
-
-            ; Get the error code
-            invoke GetLastError
-
-            ; Format the error message
-            invoke FormatMessage, FORMAT_MESSAGE_FROM_SYSTEM, NULL, eax, 0, ADDR buffer, SIZEOF buffer, NULL
-        
             ; Display the error message
-            invoke MessageBox, hWnd, ADDR buffer, ADDR szErrorCaptionNoWrite, MB_ICONERROR
+            invoke GetLastError
+            invoke DisplayError, hWnd, eax, ADDR szErrorCaptionNoWrite
 
             ; Free the allocated memory.
             invoke GlobalFree, lpFileBase
@@ -488,42 +541,158 @@ DoSaveFile PROC hWnd:HWND, bSaveAs:BOOL
 DoSaveFile ENDP
 
 ; Close the file
-CloseFile proc
+CloseFile PROC
+    ; Check if a file is open
     .IF hFile != NULL
+        ; Close the file handle
         invoke CloseHandle, hFile
         mov hFile, NULL
     .ENDIF
+    
     ret
 CloseFile endp
+
+; Font dialog
+DoFont PROC hWnd:HWND
+    LOCAL cf:CHOOSEFONT
+    LOCAL lf:LOGFONT
+
+    ; Initialize the LOGFONT structure
+    mov lf.lfHeight, -16
+    mov lf.lfWidth, 0
+    mov lf.lfEscapement, 0
+    mov lf.lfOrientation, 0
+    mov lf.lfWeight, FW_NORMAL
+    mov lf.lfItalic, FALSE
+    mov lf.lfUnderline, FALSE
+    mov lf.lfStrikeOut, FALSE
+    mov lf.lfCharSet, DEFAULT_CHARSET
+    mov lf.lfOutPrecision, OUT_DEFAULT_PRECIS
+    mov lf.lfClipPrecision, CLIP_DEFAULT_PRECIS
+    mov lf.lfQuality, DEFAULT_QUALITY
+    mov lf.lfPitchAndFamily, FIXED_PITCH or FF_DONTCARE
+    lea esi, CourierFontName       ; Load the address of the source string into ESI
+    lea edi, lf.lfFaceName         ; Load the address of the destination in the LOGFONT structure into EDI
+    mov ecx, 32                    ; Maximum number of characters to copy (size of lfFaceName)
+    cld                            ; Clear the direction flag for forward movement
+    rep movsb                      ; Copy string byte by byte from [ESI] to [EDI] using ECX as the counter
+
+    ; Initialize the CHOOSEFONT structure
+    mov cf.lStructSize, SIZEOF CHOOSEFONT
+    push hWnd
+    pop cf.hwndOwner
+    mov cf.hDC, NULL
+    lea eax, lf
+    mov cf.lpLogFont, eax
+    mov cf.iPointSize, 0
+    mov cf.Flags, CF_SCREENFONTS or CF_INITTOLOGFONTSTRUCT
+    mov cf.rgbColors, 0
+    mov cf.lCustData, 0
+    mov cf.lpfnHook, NULL
+    mov cf.lpTemplateName, NULL
+    mov cf.hInstance, NULL
+    mov cf.lpszStyle, NULL
+    mov cf.nFontType, SCREEN_FONTTYPE
+    mov cf.nSizeMin, 0
+    mov cf.nSizeMax, 0
+
+    ; Show the font dialog
+    invoke ChooseFont, ADDR cf
+
+    ; Check if the user clicked OK
+    .IF eax != 0
+        ; Create a new font
+        invoke CreateFontIndirect, ADDR lf
+        mov hFont, eax
+
+        ; Set the font of the edit control
+        invoke SendMessage, hEdit, WM_SETFONT, hFont, TRUE
+    .ENDIF
+
+    ret
+DoFont endp
+
+; Resize the edit control to fill the main window
+ResizeEditControl PROC hWnd:HWND, leftMargin:DWORD, rightMargin:DWORD, topMargin:DWORD, bottomMargin:DWORD, newWidth:DWORD, newHeight:DWORD
+    LOCAL editRect:RECT
+
+    ; Get the client area of the main window
+    invoke GetClientRect, hWnd, ADDR editRect
+
+    ; Calculate the new width and height of the edit control
+    mov eax, editRect.right
+    sub eax, editRect.left
+    sub eax, leftMargin
+    sub eax, rightMargin
+    mov ecx, editRect.bottom
+    sub ecx, editRect.top
+    sub ecx, topMargin
+    sub ecx, bottomMargin
+
+    ; Resize the edit control
+    invoke MoveWindow, hEdit, leftMargin, topMargin, eax, ecx, TRUE
+
+    ret
+ResizeEditControl ENDP
+
+; Show an About box with information about the program
+ShowAboutBox PROC hWnd:HWND
+    ; Display the About box
+    invoke MessageBox, hWnd, ADDR AboutText, ADDR AppName, MB_ICONINFORMATION or MB_OK
+
+    ret
+ShowAboutBox ENDP
 
 ; Window procedure
 WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
     .IF uMsg == WM_COMMAND
+        ; Extract the command identifier and the notification code
         mov eax, wParam
-        shr eax, 16 ; Move the high-order word to the low-order word
-        .IF ax == 0 ; The message is from a menu
-            mov eax, wParam
-            .IF ax == 1000 ; "File" menu item
-                ; Do nothing
+        mov ecx, eax
+        shr ecx, 16         ; HIWORD(wParam) - Notification code or source
+        and eax, 0FFFFh     ; LOWORD(wParam) - Command identifier
 
-            .ELSEIF ax == 1001 ; "Exit" menu item
-                ; Exit the application
-                invoke CloseFile
-
-                ; Close the window
-                invoke PostQuitMessage, 0
-            .ELSEIF ax == 1010  ; Open
-                ; Open a file
+        ; Check if the message is from a menu or an accelerator
+        .IF ecx == 0
+            ; Handle the menu command
+            .IF eax == IDM_OPEN
+                ; Handle Open from menu
                 invoke DoOpenFile, hWnd
-
-            .ELSEIF ax == 1030  ; Save
-                ; Save the file
+            .ELSEIF eax == IDM_SAVE
+                ; Handle Save from menu
                 invoke DoSaveFile, hWnd, FALSE
-
-            .ELSEIF ax == 1031  ; Save As
-                ; Save the file as a new file
+            .ELSEIF eax == IDM_SAVEAS
+                ; Handle Save As from menu
                 invoke DoSaveFile, hWnd, TRUE
-
+            .ELSEIF eax == IDM_EXIT
+                ; Handle Exit from menu
+                invoke CloseFile
+                invoke PostQuitMessage, 0
+            .ELSEIF eax == IDM_FONT
+                ; Handle Font from menu
+                invoke DoFont, hWnd
+            .ELSEIF eax == IDM_ABOUT
+                ; Handle About from menu
+                invoke ShowAboutBox, hWnd
+            .ENDIF
+        .ELSEIF ecx == 1
+            ; Handle the accelerator command
+            .IF eax == IDA_OPEN
+                ; Handle Open (Ctrl+O or Menu)
+                invoke DoOpenFile, hWnd
+            .ELSEIF eax == IDA_SAVE
+                ; Handle Save (Ctrl+S or Menu)
+                invoke DoSaveFile, hWnd, FALSE
+            .ELSEIF eax == IDA_SAVEAS
+                ; Handle Save As (Ctrl+Shift+S or Menu)
+                invoke DoSaveFile, hWnd, TRUE
+            .ELSEIF eax == IDA_EXIT
+                ; Handle Exit (Ctrl+X or Menu)
+                invoke CloseFile
+                invoke PostQuitMessage, 0
+            .ELSEIF eax == IDA_ABOUT
+                ; Handle About (F1 or Menu)
+                invoke ShowAboutBox, hWnd
             .ENDIF
         .ENDIF
     .ELSEIF uMsg == WM_CREATE
@@ -555,20 +724,21 @@ WndProc proc hWnd:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM
 
     .ELSEIF uMsg == WM_SIZE
         ; Resize the Edit Control to fill the main window, accounting for the status bar
-        mov eax,lParam
-        and eax, 0FFFFh ; LOWORD(l_lParam)
-        mov ecx, lParam
-        shr ecx, 16 ; HIWORD(l_lParam)
+        mov eax,lParam ; lParam contains the new width and height of the window
+        and eax, 0FFFFh ; LOWORD(l_lParam) ; Get the width of the window
+        mov ecx, lParam ;
+        shr ecx, 16 ; HIWORD(l_lParam) ; Get the height of the window
         sub ecx, statusBarHeight ; Subtract the height of the status bar
-        invoke MoveWindow, hEdit, 0, 0, eax, ecx, TRUE
+        invoke MoveWindow, hEdit, 0, 0, eax, ecx, TRUE ; Resize the Edit Control
+
+        ; Resize the status bar
+        invoke MoveWindow, hStatusBar, 0, ecx, eax, statusBarHeight, TRUE
 
     .ELSEIF uMsg == WM_DESTROY
         invoke CloseFile
         invoke PostQuitMessage, 0
-
     .ELSE
         invoke DefWindowProc, hWnd, uMsg, wParam, lParam
-
     .ENDIF
     ret
 WndProc endp
